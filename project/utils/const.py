@@ -7,7 +7,6 @@ MASK_FOLDER = (
         / "pytorch_models"
         / "mask"
 )
-#OASIS_FOLDER = Path(__file__).resolve().parent.parent.parent / "data" / "OASIS"
 #PRETRAINED_MODEL_FOLDER = (
 #    Path(__file__).resolve().parent.parent.parent / "data" / "trained_models"
 #)
@@ -27,22 +26,14 @@ PRETRAINED_MODEL_DECODER_PATH = (
     / "pytorch_models"
     / "decoder"
 )
-#PRETRAINED_MODEL_VGG_PATH = (
-#    Path(__file__).resolve().parent.parent.parent
-#    / "data"
-#    / "trained_models"
-#    / "vgg16.pt"
-#)
-OUTPUT_FOLDER = (
-    Path(__file__).resolve().parent.parent.parent / "results"
+PRETRAINED_MODEL_VGG_PATH = (
+   Path(__file__).resolve().parent.parent.parent
+   / "pytorch_models"
+   / "vgg"
 )
-#THESIS_IMG_FOLDER = (
-#    Path(__file__).resolve().parent.parent.parent / "data" / "thesis_imgs"
-#)
-FINAL_RESULTS_FOLDER = (
-    Path(__file__).resolve().parent.parent.parent
-    / "outputs"
-    / "final_results"
+OUTPUT_FOLDER = (
+    Path(__file__).resolve().parent.parent.parent 
+    / "results"
 )
 
 LATENT_SHAPE = [1, 3, 20, 28, 20]

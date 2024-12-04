@@ -1,4 +1,4 @@
-SUBJECT_ID=069
+SUBJECT_ID=002
 cp ~/AMATH900/Research_Project/InverseSR/pytorch_models/IXI_T1_069.pth ../inputs/
 
 cd ../
@@ -14,7 +14,7 @@ LAMBDA_PERC=1e4
 CORRUPTION=mask
 PRIOR_EVERY=15
 PRIOR_AFTER=45
-DATA_FORMAT=pth
+DATA_FORMAT=nii
 MASK_ID=9
 DOWNSAMPLE_FACTOR=8
 N_SAMPLES=3
@@ -28,8 +28,8 @@ python3 ~/AMATH900/Research_Project/InverseSR/project/BRGM_ddim.py \
     --k=$K \
     --ddim_eta=$DDIM_ETA \
     --ddim_num_timesteps=$DDIM_NUM_TIMESTEPS \
-    --update_latent_variables \
-    --update_conditioning \
+    --update_latent_variables="True" \
+    --update_conditioning="True" \
     --mean_latent_vector \
     --update_gender \
     --update_age \

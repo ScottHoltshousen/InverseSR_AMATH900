@@ -255,14 +255,14 @@ class DDIMSampler(object):
             index = total_steps - i - 1
             ts = torch.full((b,), step, device=device, dtype=torch.long)
 
-            if mask is not None:
-                assert x0 is not None
-                img_orig = self.model.q_sample(
-                    x0, ts
-                )
-                img = img_orig * mask + (1.0 - mask) * img
+            # if mask is not None:
+            #     assert x0 is not None
+            #     img_orig = self.model.q_sample(
+            #         x0, ts
+            #     )
+            #     img = img_orig * mask + (1.0 - mask) * img
 
-            outs = self.p_sample_ddim(
+            img, _ = self.p_sample_ddim(
                 img,
                 cond,
                 ts,
@@ -274,11 +274,11 @@ class DDIMSampler(object):
                 score_corrector=score_corrector,
                 corrector_kwargs=corrector_kwargs,
             )
-            img, pred_x0 = outs
-            if callback:
-                callback(i)
-            if img_callback:
-                img_callback(pred_x0, i)
+            #img, pred_x0 = outs
+            # if callback:
+            #     callback(i)
+            # if img_callback:
+            #     img_callback(pred_x0, i)
 
             #if index % log_every_t == 0 or index == total_steps - 1:
              #   intermediates["x_inter"].append(img)

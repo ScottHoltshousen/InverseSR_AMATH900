@@ -46,110 +46,23 @@ from utils.const import (
     INPUT_FOLDER,
     MASK_FOLDER,
     PRETRAINED_MODEL_DDPM_PATH,
+    PRETRAINED_MODEL_VGG_PATH,
     OUTPUT_FOLDER,
 )
 
-
-def transform_img(
-    img_path: Path,
-    device: torch.device,
-) -> Any:
-    data = {"image": img_path}
-    data = apply_transform(get_preprocessing(device), data)
-    return data["image"]
-
-
-def return_true_conditional_variable(subject_id: str) -> Tuple[int, int]:
-    csv_path = INPUT_FOLDER / "oasis_cross-sectional.csv"
-    df = pd.read_csv(csv_path)
-    df = df[df["ID"] == f"{subject_id}_MR1"]
-    gender = 0 if df["M/F"].values[0] == "F" else 1
-    age = df["Age"].values[0]
-    return gender, age.item()
-
-
-def create_corruption_imgs(
-    img_tensor: torch.Tensor, hparams: Namespace, device: torch.device
-) -> Tuple[ForwardAbstract, torch.Tensor]:
-    if hparams.corruption == "downsample":
-        forward = ForwardDownsample(factor=hparams.downsample_factor)
-        # mask = skimage.io.imread(maskFile)
-        # mask = mask[:, :, 0] == np.min(mask[:, :, 0])  # need to block black color
-        # mask = np.reshape(mask, (1, 1, mask.shape[0], mask.shape[1]))
-
-        # Original image for now
-        corrupted_img = forward(
-            img_tensor
-        )  # pass through forward model to generate corrupted image
-    elif hparams.corruption == "None":
-        forward = ForwardFillMask(device=device)
-        corrupted_img = img_tensor
-    return forward, corrupted_img
-
-
-#def load_vgg_perceptual(
-#    hparams: Namespace, target: torch.Tensor, device: torch.device
-#) -> Tuple[Any, torch.Tensor]:
-#    with open(PRETRAINED_MODEL_VGG_PATH, "rb") as f:
-#        vgg16 = torch.jit.load(f).eval().to(device)
-
-#    target_features = getVggFeatures(hparams, target, vgg16)
-#    return vgg16, target_features
-
 def load_vgg_perceptual(
     hparams: Namespace, target: torch.Tensor, device: torch.device
-    ) -> Tuple[Any, torch.Tensor]:
-
-    # Load VGG16 feature detector.
-    url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
-    with dnnlib.util.open_url(url) as f:
+) -> Tuple[Any, torch.Tensor]:
+    with open(PRETRAINED_MODEL_VGG_PATH / "vgg16.pt", "rb") as f:
         vgg16 = torch.jit.load(f).eval().to(device)
-    
+
     target_features = getVggFeatures(hparams, target, vgg16)
     return vgg16, target_features
+
 
 def logprint(message: str, verbose: bool) -> None:
     if verbose:
         print(message)
-
-
-def add_hparams_to_tensorboard(
-    hparams: Namespace,
-    final_loss: torch.Tensor,
-    final_ssim: float,
-    final_psnr: float,
-    final_mse: float,
-    final_nmse: float,
-    inversed_ventricular: float,
-    inversed_brain: float,
-    writer: SummaryWriter,
-) -> None:
-    writer.add_hparams(
-        {
-            "num_steps": hparams.num_steps,
-            "learning_rate": hparams.learning_rate,
-            "experiment_name": hparams.experiment_name,
-            "subject_id": hparams.subject_id,
-            "update_latent_variables": hparams.update_latent_variables,
-            "update_conditioning": hparams.update_conditioning,
-            "update_gender": hparams.update_gender,
-            "update_age": hparams.update_age,
-            "update_ventricular": hparams.update_ventricular,
-            "update_brain": hparams.update_brain,
-            #"alpha": hparams.lambda_alpha,
-            "perc": hparams.lambda_perc,
-            "kernel_size": hparams.kernel_size,
-        },
-        {
-            "loss/final_loss": final_loss,
-            "measurement/final_ssim": final_ssim,
-            "measurement/final_psnr": final_psnr,
-            "measurement/final_mse": final_mse,
-            "measurement/final_nmse": final_nmse,
-            "conditional_variable/inversed_ventricular": inversed_ventricular,
-            "conditional_variable/inversed_brain": inversed_brain,
-        },
-    )
 
 
 def create_mask_for_backprop(hparams: Namespace, device: torch.device) -> torch.Tensor:
@@ -207,7 +120,10 @@ def project(
         else math.prod(forward.mask.shape) - forward.mask.sum()
     )
 
-    for step in range(hparams.start_steps, hparams.num_steps):
+    patience = 20
+    best_ssim = 0
+
+    for step in range(hparams.start_steps+1, hparams.num_steps+1):
 
         def closure():
             optimizer_adam.zero_grad()
@@ -222,7 +138,6 @@ def project(
             synth_img_corrupted = forward(synth_img)  # f(G(w))
 
             loss = 0
-            prior_loss = 0
             pixelwise_loss = (
                 synth_img_corrupted - target_img_corrupted
             ).abs().sum() / total_num_pixels
@@ -233,13 +148,13 @@ def project(
             loss += hparams.lambda_perc * perceptual_loss
 
             loss.backward(create_graph=False)
-            cond.grad *= mask_cond
+            if cond.requires_grad:
+                cond.grad *= mask_cond
 
             return (
                 loss,
                 pixelwise_loss,
                 perceptual_loss,
-                prior_loss,
                 synth_img,
                 synth_img_corrupted,
             )
@@ -248,7 +163,6 @@ def project(
             loss,
             pixelwise_loss,
             perceptual_loss,
-            prior_loss,
             synth_img,
             synth_img_corrupted,
         ) = optimizer_adam.step(closure=closure)
@@ -275,7 +189,6 @@ def project(
         writer.add_scalar("loss", loss, global_step=step)
         writer.add_scalar("pixelwise_loss", pixelwise_loss, global_step=step)
         writer.add_scalar("perceptual_loss", perceptual_loss, global_step=step)
-        writer.add_scalar("prior_loss", prior_loss, global_step=step)
         writer.add_scalar("ssim", ssim_, global_step=step)
         writer.add_scalar("psnr", psnr_, global_step=step)
         writer.add_scalar("mse", mse_, global_step=step)
@@ -291,23 +204,23 @@ def project(
             if hparams.update_brain:
                 writer.add_scalar("inversed_brain", cond[0, 3], global_step=step)
         logprint(
-            f"step {step + 1:>4d}/{hparams.num_steps}: total_loss {float(loss):<5.8f} pix_loss {float(pixelwise_loss):<5.8f} perc_loss {float(perceptual_loss):<1.15f}  prior_loss {float(prior_loss):<5.8f}\n"
-            f"              : SSIM {float(ssim_):<5.8f} PSNR {float(psnr_):<5.8f} MSE {float(mse_):<5.8f} NMSE {float(nmse_):<5.8f}",
+            f"step {step:>4d}/{hparams.num_steps}: total_loss {float(loss):<5.8f} pix_loss {float(pixelwise_loss):<5.8f} perc_loss {float(perceptual_loss):<1.15f} SSIM {float(ssim_):<5.8f} PSNR {float(psnr_):<5.8f} MSE {float(mse_):<5.8f} NMSE {float(nmse_):<5.8f}",
             verbose=verbose,
         )
 
         step_ = f"{step}".zfill(4)
 
-        images_dir = OUTPUT_FOLDER / hparams.experiment_name / "images"
+        images_dir = OUTPUT_FOLDER / "images"
         if not os.path.isdir(images_dir):
             os.makedirs(images_dir)
 
-        draw_img(
-            synth_img_np,
-            title="synth",
-            step=step_,
-            output_folder=images_dir,
-        )
+        if step % 10 == 0:
+            draw_img(
+                synth_img_np,
+                title="synth",
+                step=step_,
+                output_folder=images_dir,
+            )
 
         if step % 25 == 0:
             if hparams.corruption != "None":
@@ -324,71 +237,72 @@ def project(
                     target_np,
                     ssim_=ssim_,
                 )
-            step_ = f"{step}".zfill(4)
             writer.add_figure(f"step: {step_}", imgs, global_step=step)
             plt.close(imgs)
 
-        latent_variable_out[step] = latent_variable.detach()[0]
-        cond_out[step] = cond.detach()[0]
+        latent_variable_out[step-1] = latent_variable.detach()[0]
+        cond_out[step-1] = cond.detach()[0]
 
-    add_hparams_to_tensorboard(
-        hparams,
-        final_loss=loss.item(),
-        final_ssim=ssim_,
-        final_psnr=psnr_,
-        final_mse=mse_,
-        final_nmse=nmse_,
-        inversed_ventricular=cond[0, 2].clone().detach().item(),
-        inversed_brain=cond[0, 3].clone().detach().item(),
-        writer=writer,
-    )
+        # Early stopping condition. save model and statistics if found new best
+        if ssim_ >= best_ssim: # New best
+            best_ssim = ssim_ # Update best SSIM
+            patience = 20 # Reset patience
+            print(f"New best model at step {step}. Saving...")
+
+            # Save model
+            torch.save(
+                {
+                    "epoch": step,
+                    "latent_variable": latent_variable,
+                    "cond": cond,
+                    "optimizer": optimizer_adam.state_dict(),
+                },
+                OUTPUT_FOLDER / "checkpoint.pth",
+            )
+
+            header = [
+                "Step",
+                "SSIM",
+                "PSNR",
+                "MSE",
+                "NMSE",
+                "Gender",
+                "Age",
+                "Ventricular",
+                "Brain Volume",
+            ]
+
+            row = [
+                step,
+                ssim_,
+                psnr_,
+                mse_,
+                nmse_,
+                cond[0, 0].clone().detach().item(),
+                cond[0, 1].clone().detach().item() * (82 - 44) + 44,
+                cond[0, 2].clone().detach().item(),
+                cond[0, 3].clone().detach().item(),
+                ]
+
+            # Save the statistics result to csv file
+            output_file = OUTPUT_FOLDER / "statistics.csv"
+            with open(
+                output_file,
+                "a",
+                newline=""
+            ) as file:
+                for h, r in zip(header, row):
+                    file.write(f"{h}: {r}\n\n")
+                file.write(f"END OF REPORT FOR STEP {step}\n\n")
+
+        else: # SSIM got worse
+            patience -= 1
+            if patience == 0:
+                print(f"Early stopping triggered at step {step}")
+                break
 
     writer.flush()
     writer.close()
-
-    torch.save(
-        {
-            "epoch": step,
-            "latent_variable": latent_variable,
-            "cond": cond,
-            "optimizer": optimizer_adam.state_dict(),
-        },
-        OUTPUT_FOLDER / hparams.experiment_name / "checkpoint.pth",
-    )
-
-    header = [
-            "Subject ID",
-            "SSIM",
-            "PSNR",
-            "MSE",
-            "NMSE",
-            "Gender",
-            "Age",
-            "Ventricular",
-            "Brain Volume",
-            ]
-
-    row = [
-            hparams.subject_id,
-            ssim_,
-            psnr_,
-            mse_,
-            nmse_,
-            cond[0, 0].clone().detach().item(),
-            cond[0, 1].clone().detach().item() * (82 - 44) + 44,
-            cond[0, 2].clone().detach().item(),
-            cond[0, 3].clone().detach().item(),
-        ]
-
-    # Save the statistics result to csv file
-    output_file = OUTPUT_FOLDER / hparams.experiment_name / "statistics.csv"
-    with open(
-        output_file,
-        "a",
-        newline=""
-    ) as file:
-        for h, r in zip(header, row):
-            file.write(f"{h}: {r}\n\n")
 
     return latent_variable_out, cond_out
 
@@ -430,5 +344,6 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Trainer args", add_help=False)
     add_argument(parser)
     hparams = parser.parse_args()
+    OUTPUT_FOLDER = OUTPUT_FOLDER / hparams.experiment_dir / hparams.experiment_name
     # seed_everything(42)
     main(hparams)

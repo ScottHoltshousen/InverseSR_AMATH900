@@ -28,7 +28,7 @@ from utils.const import (
     #PRETRAINED_MODEL_VAE_PATH,
     PRETRAINED_MODEL_DDPM_PATH,
     PRETRAINED_MODEL_DECODER_PATH,
-    #PRETRAINED_MODEL_VGG_PATH,
+    PRETRAINED_MODEL_VGG_PATH,
     #PRETRAINED_MODEL_FOLDER,
     OUTPUT_FOLDER,
     LATENT_SHAPE,
@@ -46,7 +46,7 @@ def transform_img(
 
 def load_target_image(hparams: Namespace, device: torch.device) -> torch.Tensor:
     if hparams.data_format == "nii":
-        img_path = list(INPUT_FOLDER.glob(f"**/*ur_IXI{hparams.subject_id}*T1.nii.gz"))[
+        img_path = list(INPUT_FOLDER.glob(f"**/IXI{hparams.subject_id}*T1.nii.gz"))[
             0
         ]
         img_tensor = transform_img(img_path, device=device)
@@ -420,3 +420,5 @@ def draw_img(img: np.ndarray, title: str, path: Path) -> None:
         dpi=300,
     )
     plt.close()
+
+

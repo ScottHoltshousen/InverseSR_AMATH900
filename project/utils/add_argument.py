@@ -21,15 +21,20 @@ def add_argument(parser: ArgumentParser):
     )
     parser.add_argument(
         "--update_latent_variables",
-        action="store_true",
+        default="store_true",
     )
     parser.add_argument(
         "--update_conditioning",
-        action="store_true",
+        default="store_true",
     )
     parser.add_argument(
         "--subject_id",
         default="019",
+        type=str,
+    )
+    parser.add_argument(
+        "--experiment_dir",
+        default="empty",
         type=str,
     )
     parser.add_argument(

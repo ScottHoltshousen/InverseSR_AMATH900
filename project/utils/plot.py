@@ -70,9 +70,9 @@ def draw_corrupted_images(
     ]
     titles_list = [
         "Reconstructed Image",
-        "Original Corrupted",
-        "Reconstructed Image (downsampled)",
-        "Original Corrupted (downsampled)",
+        "Original",
+        "Corrupted Reconstructed Image",
+        "Corrupted Original",
     ]
 
     fig = plt.figure(figsize=(16, 18))
